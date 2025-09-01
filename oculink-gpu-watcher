@@ -1,0 +1,34 @@
+#!/bin/bash
+# OCuLink GPU Watcher - Monitors GPU health and handles emergencies
+
+LOGFILE="/var/log/oculink-gpu-watcher.log"
+CHECK_INTERVAL=5
+
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOGFILE"
+}
+
+check_gpu_health() {
+    # Check if GPU is responsive
+    local gpu_count=$(lspci | grep -c "VGA.*AMD")
+    local driver_loaded=$(lsmod | grep -c "amdgpu")
+    
+    # Log periodic health checks
+    if [ $(($(date +%s) % 60)) -eq 0 ]; then
+        log_message "GPU Health: $gpu_count GPUs detected, amdgpu driver loaded: $driver_loaded"
+    fi
+    
+    # Check for GPU errors in kernel log
+    if dmesg | tail -20 | grep -i "amdgpu.*error" > /dev/null 2>&1; then
+        log_message "GPU error detected in kernel log"
+        /usr/local/bin/oculink-gpu-manager manual-safe-remove
+    fi
+}
+
+# Main monitoring loop
+log_message "OCuLink GPU Watcher started"
+
+while true; do
+    check_gpu_health
+    sleep "$CHECK_INTERVAL"
+done

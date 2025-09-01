@@ -1,0 +1,13 @@
+[Unit]
+Description=OCuLink GPU Hot-plug Kernel Safety Configuration
+After=multi-user.target
+Before=graphical.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/oculink-kernel-config
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target

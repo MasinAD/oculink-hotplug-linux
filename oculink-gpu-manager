@@ -1,0 +1,132 @@
+#!/bin/bash
+# OCuLink GPU Hot-plug Safety Manager
+# Handles safe GPU removal and addition
+
+LOGFILE="/var/log/oculink-gpu-manager.log"
+LOCKFILE="/tmp/oculink-gpu-removal.lock"
+DISPLAY_VAR="${DISPLAY:-:0}"
+USER_NAME="${SUDO_USER:-$(who | awk 'NR==1{print $1}')}"
+
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOGFILE"
+}
+
+send_notification() {
+    local message="$1"
+    local urgency="${2:-normal}"
+    
+    # Try to send notification to the active user
+    if [ -n "$USER_NAME" ]; then
+        sudo -u "$USER_NAME" DISPLAY="$DISPLAY_VAR" notify-send \
+            --urgency="$urgency" \
+            --app-name="OCuLink GPU Manager" \
+            "GPU Hot-plug" "$message" 2>/dev/null || true
+    fi
+    
+    log_message "NOTIFICATION: $message"
+}
+
+stop_gpu_processes() {
+    local pci_id="$1"
+    
+    log_message "Stopping GPU-intensive processes for $pci_id"
+    
+    # Kill GPU-intensive applications gracefully
+    pkill -f "blender" 2>/dev/null || true
+    pkill -f "davinci" 2>/dev/null || true  
+    pkill -f "steam" 2>/dev/null || true
+    pkill -f "lutris" 2>/dev/null || true
+    pkill -f "wine" 2>/dev/null || true
+    
+    # Stop compositor temporarily to release GPU
+    if pgrep -x "Hyprland" > /dev/null; then
+        log_message "Temporarily stopping Hyprland compositor"
+        sudo -u "$USER_NAME" DISPLAY="$DISPLAY_VAR" hyprctl dispatch exit &
+        sleep 2
+    fi
+    
+    # Unload GPU-specific modules if safe
+    if lsmod | grep -q "amdgpu"; then
+        sleep 3  # Allow processes to terminate
+        log_message "Attempting to unload amdgpu module"
+        modprobe -r amdgpu 2>/dev/null || log_message "Warning: Could not unload amdgpu module"
+    fi
+}
+
+prepare_gpu_removal() {
+    local pci_id="$1"
+    
+    # Create lock to prevent multiple simultaneous removals
+    if [ -f "$LOCKFILE" ]; then
+        log_message "GPU removal already in progress"
+        return 1
+    fi
+    
+    touch "$LOCKFILE"
+    
+    # Get GPU model info before removal for smart reconnection - only discrete GPUs
+    local gpu_model=$(lspci | grep -i "amd.*vga" | grep -v -i "hawkpoint\|radeon.*[0-9][0-9][0-9][0-9]G\|vega.*[0-9]" | head -1 | cut -d':' -f3- | xargs)
+    echo "$gpu_model" > /tmp/oculink-removed-gpu
+    
+    send_notification "Preparing GPU for safe removal..." "critical"
+    
+    stop_gpu_processes "$pci_id"
+    
+    # Echo to PCIe remove file to safely disconnect
+    local pci_path="/sys/bus/pci/devices/$pci_id"
+    if [ -f "$pci_path/remove" ]; then
+        log_message "Safely removing PCIe device $pci_id"
+        echo 1 > "$pci_path/remove" 2>/dev/null || log_message "Warning: Could not remove PCIe device"
+    fi
+    
+    send_notification "GPU is now safe to unplug!" "normal"
+    
+    # Start Stage 1: Wait for actual removal, then trigger Stage 2 reconnection monitoring
+    log_message "Starting two-stage monitoring: Stage 1 - Removal verification"
+    /usr/local/bin/oculink-removal-watcher "$gpu_model" &
+    
+    # Note: Lock will be removed by removal watcher once GPU is actually unplugged
+}
+
+handle_gpu_addition() {
+    local pci_id="$1"
+    
+    log_message "GPU added: $pci_id"
+    send_notification "OCuLink GPU detected and ready!" "normal"
+    
+    # Reload amdgpu if needed
+    if ! lsmod | grep -q "amdgpu"; then
+        log_message "Loading amdgpu module"
+        modprobe amdgpu 2>/dev/null || log_message "Warning: Could not load amdgpu module"
+    fi
+    
+    # Restart compositor if it was stopped
+    if [ -n "$USER_NAME" ] && ! pgrep -x "Hyprland" > /dev/null; then
+        log_message "Restarting Hyprland compositor"
+        sudo -u "$USER_NAME" setsid Hyprland > /dev/null 2>&1 &
+    fi
+}
+
+case "$1" in
+    add)
+        handle_gpu_addition "$2"
+        ;;
+    remove|unbind)
+        prepare_gpu_removal "$2"
+        ;;
+    manual-safe-remove)
+        # Manual trigger for safe removal
+        send_notification "Initiating manual GPU safe removal..." "critical"
+        # Find discrete AMD GPU PCI ID - exclude integrated
+        gpu_pci=$(lspci -D | grep -i "amd.*vga" | grep -v -i "hawkpoint\|radeon.*[0-9][0-9][0-9][0-9]G\|vega.*[0-9]" | head -1 | cut -d' ' -f1 | tr ':.' '_')
+        if [ -n "$gpu_pci" ]; then
+            prepare_gpu_removal "$gpu_pci"
+        else
+            send_notification "No AMD GPU found for removal" "normal"
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {add|remove|unbind|manual-safe-remove} [pci_id]"
+        exit 1
+        ;;
+esac

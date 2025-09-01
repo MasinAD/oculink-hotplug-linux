@@ -1,0 +1,7 @@
+*.log
+*.pid
+*.lock
+*.swp
+.DS_Store
+test/
+tmp/

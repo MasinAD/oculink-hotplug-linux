@@ -1,0 +1,15 @@
+[Unit]
+Description=OCuLink GPU Hot-plug Monitor
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/oculink-gpu-watcher
+Restart=always
+RestartSec=5
+User=root
+Environment="DISPLAY=:0"
+
+[Install]
+WantedBy=multi-user.target

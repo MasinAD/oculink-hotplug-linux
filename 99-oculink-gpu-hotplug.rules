@@ -1,0 +1,9 @@
+# OCuLink GPU Hot-plug Safety Rules
+# Detect GPU addition
+SUBSYSTEM=="pci", DRIVER=="amdgpu", ACTION=="add", ENV{ID_PCI_CLASS_FROM_DATABASE}=="Display controller", RUN+="/usr/local/bin/oculink-gpu-manager add %k"
+
+# Detect GPU removal preparation
+SUBSYSTEM=="pci", DRIVER=="amdgpu", ACTION=="remove", ENV{ID_PCI_CLASS_FROM_DATABASE}=="Display controller", RUN+="/usr/local/bin/oculink-gpu-manager remove %k"
+
+# Handle driver unbinding (safer removal detection)
+SUBSYSTEM=="pci", ACTION=="unbind", DRIVER=="amdgpu", RUN+="/usr/local/bin/oculink-gpu-manager unbind %k"
