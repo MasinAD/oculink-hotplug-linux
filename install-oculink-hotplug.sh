@@ -14,21 +14,33 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "📁 Installing files..."
+SRC_DIR=$( realpath $(dirname -- "${BASH_SOURCE[0]}") )
 
 # Install scripts
-install -m 755 /tmp/oculink-gpu-manager /usr/local/bin/
-install -m 755 /tmp/oculink-gpu-watcher /usr/local/bin/
-install -m 755 /tmp/oculink-reconnect-monitor /usr/local/bin/
-install -m 755 /tmp/oculink-removal-watcher /usr/local/bin/
-install -m 755 /tmp/oculink-kernel-config /usr/local/bin/
-install -m 755 /tmp/gpu-safe-remove /usr/local/bin/
+if [ ! -d /usr/local/bin ]; then
+    install -m 755 -o root -g root -d /usr/local/bin
+fi
+install -m 755 "${SRC_DIR}/oculink-gpu-manager" /usr/local/bin/
+install -m 755 "${SRC_DIR}/oculink-gpu-watcher" /usr/local/bin/
+install -m 755 "${SRC_DIR}/oculink-reconnect-monitor" /usr/local/bin/
+install -m 755 "${SRC_DIR}/oculink-removal-watcher" /usr/local/bin/
+install -m 755 "${SRC_DIR}/oculink-kernel-config" /usr/local/bin/
+install -m 755 "${SRC_DIR}/gpu-safe-remove" /usr/local/bin/
+if [ ! -d /usr/local/share ]; then
+    install -m 755 -o root -g root -d /usr/local/share
+    if [ ! -d /usr/local/share/oculink-hotplug ]; then
+        install -m 755 -o root -g root -d /usr/local/share/oculink-hotplug
+    fi
+fi
+install -m 755 "${SRC_DIR}/oculink-hotplug.library" /usr/local/share/oculink-hotplug/
+
 
 # Install udev rules
-install -m 644 /tmp/99-oculink-gpu-hotplug.rules /etc/udev/rules.d/
+install -m 644 "${SRC_DIR}/99-oculink-gpu-hotplug.rules" /etc/udev/rules.d/
 
 # Install systemd services
-install -m 644 /tmp/oculink-gpu-monitor.service /etc/systemd/system/
-install -m 644 /tmp/oculink-kernel-safety.service /etc/systemd/system/
+install -m 644 "${SRC_DIR}/oculink-gpu-monitor.service" /etc/systemd/system/
+install -m 644 "${SRC_DIR}/oculink-kernel-safety.service" /etc/systemd/system/
 
 echo "🔄 Reloading system configuration..."
 
@@ -40,16 +52,16 @@ udevadm trigger
 systemctl daemon-reload
 systemctl enable oculink-gpu-monitor.service
 systemctl enable oculink-kernel-safety.service
-systemctl start oculink-gpu-monitor.service
-systemctl start oculink-kernel-safety.service
+systemctl restart oculink-gpu-monitor.service
+systemctl restart oculink-kernel-safety.service
 
 # Create log directory
-mkdir -p /var/log
-touch /var/log/oculink-gpu-manager.log
-touch /var/log/oculink-gpu-watcher.log
-touch /var/log/oculink-reconnect.log
-touch /var/log/oculink-removal-watcher.log
-chmod 644 /var/log/oculink-*.log
+#mkdir -p /var/log
+#touch /var/log/oculink-gpu-manager.log
+#touch /var/log/oculink-gpu-watcher.log
+#touch /var/log/oculink-reconnect.log
+#touch /var/log/oculink-removal-watcher.log
+#chmod 644 /var/log/oculink-*.log
 
 echo "✅ Installation complete!"
 echo
@@ -57,7 +69,7 @@ echo "📋 Usage:"
 echo "   • Automatic: GPU will be safely prepared when unplugged"
 echo "   • Manual: Run 'gpu-safe-remove' before unplugging"
 echo "   • Smart reconnection: Auto-detects when you plug it back in"
-echo "   • Logs: Check /var/log/oculink-*.log for details"
+#echo "   • Logs: Check /var/log/oculink-*.log for details"
 echo "   • Monitor status: 'oculink-reconnect-monitor status'"
 echo
 echo "🔍 Service status:"

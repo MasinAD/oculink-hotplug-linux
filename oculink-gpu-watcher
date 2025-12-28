@@ -2,10 +2,11 @@
 # OCuLink GPU Watcher - Monitors GPU health and handles emergencies
 
 LOGFILE="/var/log/oculink-gpu-watcher.log"
-CHECK_INTERVAL=5
+_CHECK_INTERVAL=${CHECK_INTERVAL:-5}
 
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOGFILE"
+#    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOGFILE"
+    logger "$1"
 }
 
 check_gpu_health() {
@@ -26,9 +27,9 @@ check_gpu_health() {
 }
 
 # Main monitoring loop
-log_message "OCuLink GPU Watcher started"
+log_message "OCuLink GPU Watcher started, checking every ${_CHECK_INTERVAL} second(s)."
 
 while true; do
     check_gpu_health
-    sleep "$CHECK_INTERVAL"
+    sleep "$_CHECK_INTERVAL"
 done

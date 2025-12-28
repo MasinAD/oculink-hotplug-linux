@@ -2,13 +2,21 @@
 # Smart OCuLink GPU Reconnection Monitor
 # Only activates after a removal event, intelligently detects reconnection
 
-MONITOR_STATE_FILE="/tmp/oculink-monitor-state"
-PCI_WATCH_PIPE="/tmp/oculink-pci-watch"
-REMOVED_GPU_INFO="/tmp/oculink-removed-gpu"
-LOG_FILE="/var/log/oculink-reconnect.log"
+if [ -f /usr/local/share/oculink-hotplug/oculink-hotplug.library ]; then
+    source /usr/local/share/oculink-hotplug/oculink-hotplug.library
+else
+    log_message "oculink-hotplug.library not found. Terminating."
+    exit 2
+fi
+
+MONITOR_STATE_FILE="/run/oculink-hotplug/oculink-monitor-state"
+PCI_WATCH_PIPE="/run/oculink-hotplug/oculink-pci-watch"
+REMOVED_GPU_INFO="/run/oculink-hotplug/oculink-removed-gpu"
+#LOG_FILE="/var/log/oculink-reconnect.log"
 
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+#    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+    logger -t oculink-reconnect-monitor "${1}"
 }
 
 send_notification() {
@@ -192,6 +200,10 @@ trap stop_monitoring EXIT INT TERM
 # Main execution
 case "$1" in
     start)
+        if [ "$EUID" -ne 0 ]; then 
+            echo "❌ Please run as root (use sudo)"
+            exit 1
+        fi
         if [ -f "$MONITOR_STATE_FILE" ]; then
             log_message "Monitor already active"
             exit 0
@@ -201,6 +213,10 @@ case "$1" in
         start_monitoring "$gpu_model"
         ;;
     stop)
+        if [ "$EUID" -ne 0 ]; then 
+            echo "❌ Please run as root (use sudo)"
+            exit 1
+        fi
         stop_monitoring
         ;;
     status)

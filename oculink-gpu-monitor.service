@@ -10,6 +10,10 @@ Restart=always
 RestartSec=5
 User=root
 Environment="DISPLAY=:0"
+Environment="CHECK_INTERVAL=5"
+RuntimeDirectory=oculink-hotplug
+CacheDirectory=oculink-hotplug
+ConfigurationDirectory=oculink-hotplug
 
 [Install]
 WantedBy=multi-user.target

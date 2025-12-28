@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# OCuLink Hotplug library for shared functions
+
+# According to https://admin.pci-ids.ucw.cz/read/PC?restrict= the
+# known vendors of GPUs  –Intel, AMD and Nvidia– have these vendor IDs:
+# Intel: 8086
+# AMD/ATI: 1002 (AMD additionally uses 1022 but not for GPUs)
+# Nvidia: 10de
+# Providing these as a first parameter limits the search
+detect_gpu () {
+    local VENDOR="${1}"
+    local MODEL="${2}"
+    # According to https://admin.pci-ids.ucw.cz/read/PD/03 the class IDs
+    # starting with 03 are display controllers, so no need to grep for
+    # VGA anymore
+    lspci -PPDd "${VENDOR}"::03xx | grep -i -E "${MODEL}"
+}
+
+detect_intel_gpu () {
+    local MODEL="${1}"
+    detect_gpu "1005" "${MODEL}"
+}
+
+detect_intel_gpu_integrated() {
+    local iGPU_LIST="(integrated|UHD|HD Graphics)"
+    detect_intel_gpu "${iGPU_LIST}"
+}
+
+detect_intel_gpu_discrete() {
+    local dGPU_LIST="Arc"
+    detect_intel_gpu "${dGPU_LIST}"
+}
+
+detect_amd_gpu () {
+    local MODEL="${1}"
+    detect_gpu "1002" "${MODEL}"
+}
+
+detect_amd_gpu_integrated() {
+    local iGPU_LIST="(Strix|HawkPoint|Phoenix|Rembrandt)"
+    detect_amd_gpu "${iGPU_LIST}"
+}
+
+detect_amd_gpu_discrete() {
+    local dGPU_LIST="(Navi|Vega|Polaris)"
+    detect_amd_gpu "${dGPU_LIST}"
+}
+
+detect_nvidia_gpu () {
+    local MODEL="${1}"
+    detect_gpu "10de" "${MODEL}"
+}
+
+detect_nvidia_gpu_integrated() {
+    local iGPU_LIST=""
+    detect_nvidia_gpu "${iGPU_LIST}"
+}
+
+detect_nvidia_gpu_discrete() {
+    local dGPU_LIST=""
+    detect_nvidia_gpu "${dGPU_LIST}"
+}
+
+get_link_width_for_gpus() {
+    for GPU in $(detect_gpu | cut -d" " -f1)
+    do
+        get_actual_link_width "${GPU}"
+    done
+}
+
+lspci_identifier_to_sysfs_path() {
+    # Normalize lspci bus path to sysfs path
+    # first, get the PCI domain of the GPU
+    PCI_DOMAIN=$(echo "${1}" | cut -d":" -f1,2)
+    # then, replace any occurence of "/" with "/domain:"
+    REL_BUS_PATH="${1//\//\/0000:}"
+    printf "/sys/devices/pci%s/%s" "${PCI_DOMAIN}" "${REL_BUS_PATH}"
+}
+
+# Get the actual link width for a GPU based upon the lowest link width
+# along the bus chain.
+# @params
+# $1    string  PCI device identifier as provided by `lspci -PPD`
+get_actual_link_width() {
+    SYSFS_PATH=$(lspci_identifier_to_sysfs_path "${1}")
+    local current_link_widths_string=$(get_current_link_widths "${SYSFS_PATH}")
+    IFS=" " read -r -a current_link_widths <<<"${current_link_widths_string}"
+    (IFS=$'\n'; echo "${current_link_widths[*]}") | sort -n | head -n 1
+}
+
+# Get the max link width for a GPU based upon the lowest max link width
+# along the bus chain.
+# @params
+# $1    string  PCI device identifier as provided by `lspci -PPD`
+get_max_link_width() {
+    SYSFS_PATH=$(lspci_identifier_to_sysfs_path "${1}")
+    local max_link_widths_string=$(get_max_link_widths "${SYSFS_PATH}")
+    IFS=" " read -r -a max_link_widths <<<"${max_link_widths_string}"
+    (IFS=$'\n'; echo "${max_link_widths[*]}") | sort -n | head -n 1
+}
+
+# Iterates along the path of the PCI device provided until no
+# `current_link_width` is found then returns all `current_link_width`s
+# found during iteration.
+# @params
+# $1    string  Path to a PCI device in sysfs
+#
+# @returns
+# Prints the current link widths as a space separated list
+get_current_link_widths() {
+#    echo "Working on ${1}" >&2
+    if [ -f "${1}/current_link_width" ]
+    then
+        get_current_link_widths $( dirname "${1}" )
+        local current_link_width=$(<"${1}/current_link_width")
+        printf "%s " "${current_link_width}"
+    fi
+}
+
+# Iterates along the path of the PCI device provided until no
+# `max_link_width` is found then returns all `max_link_width`s
+# found during iteration.
+# @params
+# $1    string  Path to a PCI device in sysfs
+#
+# @returns
+# Prints the max link widths as a space separated list
+get_max_link_widths() {
+#    echo "Working on ${1}" >&2
+    if [ -f "${1}/max_link_width" ]
+    then
+        get_max_link_widths $( dirname "${1}" )
+        local max_link_width=$(<"${1}/max_link_width")
+        printf "%s " "${current_max_width}"
+    fi
+}
