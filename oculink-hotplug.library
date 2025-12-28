@@ -71,10 +71,11 @@ get_link_width_for_gpus() {
 lspci_identifier_to_sysfs_path() {
     # Normalize lspci bus path to sysfs path
     # first, get the PCI domain of the GPU
-    PCI_DOMAIN=$(echo "${1}" | cut -d":" -f1,2)
+    PCI_BUS=$(echo "${1}" | cut -d":" -f2)
+    PCI_DOMAIN=$(echo "${1}" | cut -d":" -f1)
     # then, replace any occurence of "/" with "/domain:"
-    REL_BUS_PATH="${1//\//\/0000:}"
-    printf "/sys/devices/pci%s/%s" "${PCI_DOMAIN}" "${REL_BUS_PATH}"
+    REL_BUS_PATH="${1//\//\/${PCI_DOMAIN}:}"
+    printf "/sys/devices/pci%s:%s/%s" "${PCI_DOMAIN}" "${PCI_BUS}" "${REL_BUS_PATH}"
 }
 
 # Get the actual link width for a GPU based upon the lowest link width
